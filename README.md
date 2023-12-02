@@ -1,13 +1,25 @@
-# Проект 9-го спринта
+# Проект 9-го спринта «Облачные технологии»
 
-### Как работать с репозиторием
-1. В вашем GitHub-аккаунте автоматически создастся репозиторий `de-project-sprint-9` после того, как вы привяжете свой GitHub-аккаунт на Платформе.
-2. Скопируйте репозиторий на свой компьютер. В качестве пароля укажите ваш `Access Token`, который нужно получить на странице [Personal Access Tokens](https://github.com/settings/tokens)):
-	* `git clone https://github.com/{{ username }}/de-project-sprint-9.git`
-3. Перейдите в директорию с проектом: 
-	* `cd de-project-sprint-9`
-4. Выполните проект и сохраните получившийся код в локальном репозитории:
-	* `git add .`
-	* `git commit -m 'my best commit'`
-5. Обновите репозиторий в вашем GitHub-аккаунте:
-	* `git push origin main`
+### Задача
+Реализовать задачу с использование облачных технологий Yandex Cloud
+ - организовать сбор данных из разных источников
+ - реализовать доставку данных в хранилище
+
+
+### Ссылки на реджестри
+Service DDS `cr.yandex/crpjj27ufg6v6vc69qig/dds_service:02-12-2023-p-r5`  
+Service CDM `cr.yandex/crpjj27ufg6v6vc69qig/cdm_service:02-12-2023-p-r5`
+
+
+### Структура репозитория
+- `/solution/service_dds` (файлы для сервиса DDS)
+- `/solution/service_cdm` (файлы для сервиса CDM)
+- `/solution/ddl` (ddl для создания таблиц сервисов)
+
+### Иллюстрации
+
+Диаграмма БД
+![ddl_diagram.jpg](imag/ddl_diagram.jpg)
+
+Наполнение БД
+![fill.jpg](imag/fill.jpg)
