@@ -19,7 +19,7 @@ Service CDM `cr.yandex/crpjj27ufg6v6vc69qig/cdm_service:02-12-2023-p-r5`
 ### Иллюстрации
 
 Диаграмма БД
-![ddl_diagram.jpg](imag/ddl_diagram.jpg)
+![ddl_diagram.jpg](img/ddl_diagram.jpg)
 
 Наполнение БД
-![fill.jpg](imag/fill.jpg)
+![fill.jpg](img/fill.jpg)
