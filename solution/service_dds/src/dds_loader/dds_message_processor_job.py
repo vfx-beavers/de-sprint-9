@@ -1,9 +1,8 @@
 from datetime import datetime
 from logging import Logger
-import uuid
-
+from typing import List, Dict
 from lib.kafka_connect import KafkaConsumer, KafkaProducer
-from dds_loader.repository import DdsRepository
+from dds_loader.repository import DdsRepository, OrderDdsBuilder
 
 
 class DdsMessageProcessor:
@@ -28,94 +27,80 @@ class DdsMessageProcessor:
             if not msg:
                 break
 
-            payload = msg['payload']
+            self._logger.info(f"{datetime.utcnow()}: Message received")
+            
+            order = msg['payload']
 
-            #---
-            if payload['status'] != 'CLOSED':
-                break
+                
+            order_builder = OrderDdsBuilder()
+            order_builder.init(order)  
 
-            load_dt = datetime.now()
-            load_src = self._consumer.topic
+            # hub build
+            h_user_object = order_builder.h_user()
+            h_product_object = order_builder.h_product()
+            h_category_object = order_builder.h_category()  
+            h_order_object = order_builder.h_order()  
+            h_restaurant_object = order_builder.h_restaurant()
 
-            order_id = payload['id']
-            order_dt = payload['date']
+            # links    
+            user = h_user_object.dict()
+            ord = h_order_object.dict()
+            h_product_pks = [h_product.h_product_pk for h_product in h_product_object]
+            h_category_pks = [h_category.h_category_pk for h_category in h_category_object]
+            rest = h_restaurant_object.dict()
 
-            user = payload['user']
-            user_id = user['id']
-            username = user['name']
-            userlogin = user['login']
+            # link build: 
+            l_order_user_obj = order_builder.l_order_user(user['h_user_pk'], ord['h_order_pk'])  
+            l_order_product_obj = order_builder.l_order_product(h_product_pks, ord['h_order_pk']) 
+            l_product_category_obj = order_builder.l_product_category(h_product_pks, h_category_pks)
+            l_product_restaurant_obj = order_builder.l_product_restaurant(rest['h_restaurant_pk'], h_product_pks)
+            
+            # sats
+            s_order_cost_obj = order_builder.s_order_cost(ord['h_order_pk'])
+            s_order_status_obj = order_builder.s_order_status(ord['h_order_pk'])
+            s_product_names_obj = order_builder.s_product_names(h_product_pks)
+            s_restaurant_names_obj = order_builder.s_restaurant_names(rest['h_restaurant_pk'])
+            s_user_names_obj = order_builder.s_user_names(user['h_user_pk'])
 
-            restaurant_id = payload['restaurant']['id']
-            restaurant_name = payload['restaurant']['name']
+            # data to pg
+            self._dds_repository.h_user_insert(h_user_object)
+            self._dds_repository.h_product_insert(h_product_object)
+            self._dds_repository.h_category_insert(h_category_object)
+            self._dds_repository.h_order_insert(h_order_object)
+            self._dds_repository.h_restaurant_insert(h_restaurant_object)
 
-            order_cost = payload['cost']
-            order_payment = payload['payment']
-            order_status = payload['status']
+            self._dds_repository.l_order_user_insert(l_order_user_obj)
+            self._dds_repository.l_order_product_insert(l_order_product_obj)
+            self._dds_repository.l_product_category_insert(l_product_category_obj)
+            self._dds_repository.l_product_restaurant_insert(l_product_restaurant_obj)
 
-            products = payload['products']
+            self._dds_repository.s_order_cost_insert(s_order_cost_obj)
+            self._dds_repository.s_order_status_insert(s_order_status_obj)
+            self._dds_repository.s_product_names_insert(s_product_names_obj)
+            self._dds_repository.s_restaurant_names_insert(s_restaurant_names_obj)
+            self._dds_repository.s_user_names_insert(s_user_names_obj)
 
-            h_user_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, user_id))
-            h_restaurant_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, restaurant_id))
-            h_order_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(order_id)))
-            hk_order_user_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_order_pk, h_user_pk])))
-            hk_user_names_hashdiff = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_user_pk, username, userlogin])))
-            hk_restaurant_names_hashdiff = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_restaurant_pk, restaurant_name])))
-            hk_order_cost_hashdiff = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_order_pk, str(order_cost), str(order_payment)])))
-            hk_order_status_hashdiff = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_order_pk, order_status])))
-
-            self._dds_repository.h_user_insert(h_user_pk, user_id, load_dt, load_src)
-            self._dds_repository.h_restaurant_insert(h_restaurant_pk, restaurant_id, load_dt, load_src)
-            self._dds_repository.h_order_insert(h_order_pk, order_id, load_dt, order_dt, load_src)
-            self._dds_repository.l_order_user_insert(hk_order_user_pk, h_order_pk, h_user_pk, load_dt, load_src)
-            self._dds_repository.s_user_names_insert(h_user_pk, username, userlogin, load_dt, load_src, hk_user_names_hashdiff)
-            self._dds_repository.s_restaurant_names_insert(h_restaurant_pk, restaurant_name, load_dt, load_src, hk_restaurant_names_hashdiff)
-            self._dds_repository.s_order_cost_insert(h_order_pk, order_cost, order_payment, load_dt, load_src, hk_order_cost_hashdiff)
-            self._dds_repository.s_order_status_insert(h_order_pk, order_status, load_dt, load_src, hk_order_status_hashdiff)
-
-            #---
-            h_product_pk_list = []
-            h_category_pk_list = []
-            product_name_list = []
-            category_name_list = []
-            prod_quantity_list = []
-
-            for product in products:
-                product_id = product['id']
-                category_name = product['category']
-                product_name = product['name']
-
-                h_product_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, product_id))
-                h_category_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, category_name))
-
-                hk_order_product_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_order_pk, h_product_pk])))
-                hk_product_restaurant_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_product_pk, h_restaurant_pk])))
-                hk_product_category_pk = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_product_pk, h_category_pk])))
-                hk_product_names_hashdiff = str(uuid.uuid5(uuid.NAMESPACE_DNS, "".join([h_product_pk, product_name])))
-
-                self._dds_repository.h_product_insert(h_product_pk, product_id, load_dt, load_src)
-                self._dds_repository.h_category_insert(h_category_pk, category_name, load_dt, load_src)
-
-                self._dds_repository.l_order_product_insert(hk_order_product_pk, h_order_pk, h_product_pk, load_dt, load_src)
-                self._dds_repository.l_product_restaurant_insert(hk_product_restaurant_pk, h_product_pk, h_restaurant_pk, load_dt, load_src)
-                self._dds_repository.l_product_category_insert(hk_product_category_pk, h_product_pk, h_category_pk, load_dt, load_src)
-
-                self._dds_repository.s_product_names_insert(h_product_pk, product_name, load_dt, load_src, hk_product_names_hashdiff)
-
-                h_product_pk_list.append(h_product_pk)
-                h_category_pk_list.append(h_category_pk)
-                product_name_list.append(product_name)
-                category_name_list.append(category_name)
-                prod_quantity_list.append(product['quantity'])
-
-            dst_msg = {
-                "user_id": h_user_pk,
-                "product_id": h_product_pk_list,
-                "product_name": product_name_list,
-                "category_id": h_category_pk_list,
-                "category_name": category_name_list,
-                "order_cnt": prod_quantity_list 
+            msg_prod = {
+                "user_id": str(user['h_user_pk']),
+                "product": self._format_products(s_product_names_obj),
+                "category": self._format_categories(h_category_object)
             }
 
-            self._producer.produce(dst_msg)
+            self._producer.produce(msg_prod)
+            self._logger.info(f"{datetime.utcnow()}. Message Sent")
 
         self._logger.info(f"{datetime.utcnow()}: FINISH")
+
+    def _format_products(self, product_names: list) -> List[Dict[str, str]]:
+        prod_names = []
+        for prod in product_names:
+            prod_names.append({"id": str(prod.h_product_pk), 
+                               "name": str(prod.name)})
+        return prod_names
+    
+    def _format_categories(self, category_names: list) -> List[Dict[str, str]]:
+        cat_names = []
+        for cat in category_names:
+            cat_names.append({"id": str(cat.h_category_pk), 
+                               "name": str(cat.category_name)})
+        return cat_names
